@@ -5,6 +5,7 @@ CREATE TABLE schedules (
   day_of_week SMALLINT NOT NULL CHECK (day_of_week >= 1 AND day_of_week <= 7),
   time TIME NOT NULL,
   title TEXT NOT NULL,
+  category TEXT DEFAULT 'routine',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

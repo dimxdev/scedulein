@@ -1,13 +1,42 @@
+import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { CalendarDays, LogOut, CheckCircle2 } from 'lucide-react';
+import { CalendarDays, LogOut, CheckCircle2, Download } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import SkyBackground from './SkyBackground';
 import { useAuthStore } from '../store/authStore';
 import { motion } from 'framer-motion';
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
 export default function Layout() {
   const location = useLocation();
   const { user, isCloud, signOut } = useAuthStore();
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [canInstall, setCanInstall] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+      setCanInstall(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    await deferredPrompt.prompt();
+    const choice = await deferredPrompt.userChoice;
+    if (choice.outcome === 'accepted') {
+      setCanInstall(false);
+      setDeferredPrompt(null);
+    }
+  };
 
   const navItems = [
     { path: '/', label: 'Hari Ini', icon: CheckCircle2 },
@@ -77,8 +106,19 @@ export default function Layout() {
             })}
           </nav>
 
-          {/* Right Actions: Theme Toggle & User */}
+          {/* Right Actions: Install PWA, Theme Toggle & User */}
           <div className="flex items-center gap-2.5">
+            {canInstall && (
+              <button
+                onClick={handleInstallClick}
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-300 hover:to-orange-500 text-amber-950 font-bold text-xs shadow-sm hover:scale-105 active:scale-95 transition-all"
+                title="Install Schedulin ke perangkat Anda"
+              >
+                <Download className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Install</span>
+              </button>
+            )}
+
             <ThemeToggle />
 
             {user && (
@@ -98,6 +138,26 @@ export default function Layout() {
             )}
           </div>
         </div>
+
+        {/* Mobile Install App banner (if prompt available) */}
+        {canInstall && (
+          <div className="sm:hidden max-w-4xl mx-auto mt-2">
+            <div className="backdrop-blur-xl bg-amber-100/90 dark:bg-amber-950/80 border border-amber-300/60 dark:border-amber-700/60 rounded-2xl p-2.5 px-4 flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-base">📲</span>
+                <span className="text-xs font-bold text-amber-950 dark:text-amber-200">
+                  Pasang Schedulin di Layar Utama HP
+                </span>
+              </div>
+              <button
+                onClick={handleInstallClick}
+                className="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-sm active:scale-95 transition-all"
+              >
+                Install
+              </button>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Main Content Area */}
