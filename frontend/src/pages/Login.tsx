@@ -16,7 +16,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   const { isDarkMode } = useThemeStore();
-  const { signInGuest } = useAuthStore();
+  const { signInGuest, setUser } = useAuthStore();
   const navigate = useNavigate();
   const isCloud = isSupabaseConfigured();
 
@@ -26,11 +26,18 @@ export default function Login() {
     setLoading(true);
 
     if (isCloud) {
-      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError) {
         setError(authError.message);
         setLoading(false);
         return;
+      }
+      if (data?.user) {
+        setUser({
+          id: data.user.id,
+          email: data.user.email || email,
+          isGuest: false,
+        });
       }
     } else {
       // Offline/Local mode: log in with entered email
@@ -38,7 +45,7 @@ export default function Login() {
     }
 
     setLoading(false);
-    navigate('/');
+    navigate('/', { replace: true });
   };
 
   const handleGuestLogin = () => {

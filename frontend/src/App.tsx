@@ -9,13 +9,34 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import ManageSchedule from './pages/ManageSchedule';
 
+import { supabase } from './lib/supabase';
+import { isSupabaseConfigured } from './lib/dataService';
+
 export default function App() {
-  const { user, loading, checkUser } = useAuthStore();
+  const { user, loading, checkUser, setUser } = useAuthStore();
   const initTheme = useThemeStore((state) => state.initTheme);
 
   useEffect(() => {
     initTheme();
     checkUser();
+
+    if (isSupabaseConfigured()) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (session?.user) {
+          setUser({
+            id: session.user.id,
+            email: session.user.email || 'user@example.com',
+            isGuest: false,
+          });
+        } else if (!useAuthStore.getState().user?.isGuest) {
+          setUser(null);
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
   }, []);
 
   if (loading) {

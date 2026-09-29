@@ -17,7 +17,7 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
 
   const { isDarkMode } = useThemeStore();
-  const { signInGuest } = useAuthStore();
+  const { signInGuest, setUser } = useAuthStore();
   const navigate = useNavigate();
   const isCloud = isSupabaseConfigured();
 
@@ -28,10 +28,20 @@ export default function Register() {
     setLoading(true);
 
     if (isCloud) {
-      const { error: regError } = await supabase.auth.signUp({ email, password });
+      const { data, error: regError } = await supabase.auth.signUp({ email, password });
       if (regError) {
         setError(regError.message);
         setLoading(false);
+        return;
+      }
+      if (data?.session && data?.user) {
+        setUser({
+          id: data.user.id,
+          email: data.user.email || email,
+          isGuest: false,
+        });
+        setLoading(false);
+        navigate('/', { replace: true });
         return;
       }
       setMsg('Registrasi akun berhasil! Silakan langsung login.');
@@ -39,7 +49,7 @@ export default function Register() {
     } else {
       // Local mode
       signInGuest(email.split('@')[0] || 'Kawan Schedulin');
-      navigate('/');
+      navigate('/', { replace: true });
     }
 
     setLoading(false);
