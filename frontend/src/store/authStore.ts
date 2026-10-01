@@ -169,6 +169,14 @@ export const useAuthStore = create<AuthState>((set, get) => {
     signOut: async () => {
       const current = get().user;
       if (current && !current.isGuest) {
+        // Hentikan push di perangkat ini selagi sesi masih valid (supaya tidak menerima notif akun lama)
+        try {
+          const [{ disablePush }, reminders] = await Promise.all([import('../lib/push'), import('../lib/reminders')]);
+          await disablePush();
+          reminders.setReminderSettings({ ...reminders.getReminderSettings(), enabled: false, push: false });
+        } catch (err) {
+          console.warn('Gagal menonaktifkan push:', err);
+        }
         try {
           const sb = await getSupabase();
           await sb.auth.signOut();

@@ -8,6 +8,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Service worker kustom (src/sw.ts) supaya bisa menerima push notification
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       includeAssets: ['favicon.svg', 'favicon.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'Schedulin',
@@ -37,11 +41,10 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         // og-image hanya untuk preview link di sosmed, tidak perlu disimpan offline
         globIgnores: ['**/og-image.jpg'],
-        cleanupOutdatedCaches: true,
       },
     }),
   ],

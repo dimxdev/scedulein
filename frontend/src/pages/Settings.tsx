@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Bell, BellOff, CloudUpload, Database, Download, FileUp, Info, LogOut, Save, User } from 'lucide-react';
+import { Bell, BellOff, CloudUpload, Database, Download, FileUp, Info, LogOut, Save, Smartphone, User } from 'lucide-react';
 import type { AppData } from '../lib/dataService';
 import { downloadExport, parseImport } from '../lib/transfer';
 import { localScheduleCount, dismissMigrationOffer } from '../lib/guestMigration';
@@ -11,6 +11,8 @@ import {
   showNotification,
   useReminderSettings,
 } from '../lib/reminders';
+import { disablePush, enablePush, pushSupport, updatePushLead } from '../lib/push';
+import { friendlyError } from '../lib/errors';
 import { useAuthStore } from '../store/authStore';
 import { useDataStore } from '../store/dataStore';
 import { toast } from '../store/toastStore';
@@ -72,17 +74,57 @@ function ProfileSection() {
 }
 
 function ReminderSection() {
+  const user = useAuthStore((s) => s.user);
   const settings = useReminderSettings();
   const [permission, setPermission] = useState(notificationPermission);
+  const [busy, setBusy] = useState(false);
+  const support = pushSupport();
+  const isCloud = Boolean(user && !user.isGuest);
+  // Push server: user cloud di browser yang mendukung. Selain itu pakai pengingat lokal.
+  const canPush = isCloud && support === 'supported';
 
   const enable = async () => {
-    const result = await requestNotificationPermission();
-    setPermission(result);
-    if (result === 'granted') {
-      setReminderSettings({ ...settings, enabled: true });
-      toast.success('Pengingat aktif!');
-    } else if (result === 'denied') {
-      toast.error('Izin notifikasi ditolak. Aktifkan lewat pengaturan situs di browser.');
+    setBusy(true);
+    try {
+      if (canPush && user) {
+        await enablePush(user.id, settings.leadMinutes);
+        setReminderSettings({ ...settings, enabled: true, push: true });
+        toast.success('Pengingat aktif! Notifikasi tetap datang walaupun app ditutup.');
+      } else {
+        const result = await requestNotificationPermission();
+        if (result === 'denied') throw new Error('Izin notifikasi ditolak. Aktifkan lewat pengaturan situs di browser.');
+        if (result !== 'granted' && result !== 'unsupported') throw new Error('Izin notifikasi belum diberikan.');
+        setReminderSettings({ ...settings, enabled: true, push: false });
+        toast.success('Pengingat aktif!');
+      }
+    } catch (err) {
+      toast.error(friendlyError(err).replace(/^Terjadi kesalahan: /, ''));
+    } finally {
+      setPermission(notificationPermission());
+      setBusy(false);
+    }
+  };
+
+  const disable = async () => {
+    setBusy(true);
+    try {
+      if (settings.push) await disablePush();
+    } catch (err) {
+      toast.error(friendlyError(err));
+    } finally {
+      setReminderSettings({ ...settings, enabled: false, push: false });
+      setBusy(false);
+    }
+  };
+
+  const changeLead = async (leadMinutes: number) => {
+    setReminderSettings({ ...settings, leadMinutes });
+    if (settings.push) {
+      try {
+        await updatePushLead(leadMinutes);
+      } catch (err) {
+        toast.error(friendlyError(err));
+      }
     }
   };
 
@@ -100,8 +142,8 @@ function ReminderSection() {
           role="switch"
           aria-checked={settings.enabled}
           aria-label="Aktifkan pengingat"
-          disabled={permission === 'unsupported'}
-          onClick={() => (settings.enabled ? setReminderSettings({ ...settings, enabled: false }) : enable())}
+          disabled={busy || (permission === 'unsupported' && !canPush)}
+          onClick={() => (settings.enabled ? disable() : enable())}
           className={`relative flex-shrink-0 w-12 h-7 rounded-full transition-colors disabled:opacity-40 ${
             settings.enabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'
           }`}
@@ -114,7 +156,35 @@ function ReminderSection() {
         </button>
       </div>
 
-      {permission === 'unsupported' && (
+      {settings.enabled && (
+        <p
+          className={`text-xs font-semibold flex items-center gap-1.5 ${
+            settings.push ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+          }`}
+        >
+          {settings.push ? (
+            <>
+              <Smartphone className="w-4 h-4" /> Push aktif di perangkat ini — tetap datang walaupun app ditutup.
+            </>
+          ) : (
+            <>
+              <Info className="w-4 h-4" /> Mode lokal — hanya bekerja selama Schedulin terbuka.
+            </>
+          )}
+        </p>
+      )}
+
+      {support === 'ios-needs-install' && (
+        <div className="p-3 rounded-2xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200/70 dark:border-sky-900/50 text-xs text-sky-900 dark:text-sky-100 space-y-1">
+          <p className="font-bold">📱 Pakai iPhone/iPad?</p>
+          <p>
+            Supaya notifikasi datang walaupun app ditutup, pasang dulu: ketuk <strong>Share</strong> →{' '}
+            <strong>Add to Home Screen</strong>, lalu buka Schedulin dari Home Screen dan aktifkan pengingat di sini. (Butuh iOS
+            16.4 ke atas.)
+          </p>
+        </div>
+      )}
+      {permission === 'unsupported' && support !== 'ios-needs-install' && (
         <p className="text-xs font-semibold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
           <BellOff className="w-4 h-4" /> Browser ini tidak mendukung notifikasi.
         </p>
@@ -133,7 +203,7 @@ function ReminderSection() {
           <select
             id="lead-select"
             value={settings.leadMinutes}
-            onChange={(e) => setReminderSettings({ ...settings, leadMinutes: Number(e.target.value) })}
+            onChange={(e) => changeLead(Number(e.target.value))}
             className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium"
           >
             {LEAD_OPTIONS.map((m) => (
@@ -155,11 +225,13 @@ function ReminderSection() {
         </div>
       )}
 
-      <p className="text-[11px] text-slate-400 flex gap-1.5">
-        <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-        Pengingat bekerja selama Schedulin terbuka — termasuk di tab latar belakang atau saat dipasang sebagai aplikasi. Kalau
-        aplikasi ditutup sepenuhnya, pengingat tidak bisa dikirim.
-      </p>
+      {!isCloud && (
+        <p className="text-[11px] text-slate-400 flex gap-1.5">
+          <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          Di mode tamu pengingat hanya bekerja selama Schedulin terbuka. Daftar akun supaya notifikasi tetap datang walaupun app
+          ditutup.
+        </p>
+      )}
     </section>
   );
 }

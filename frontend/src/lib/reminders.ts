@@ -7,6 +7,8 @@ export interface ReminderSettings {
   enabled: boolean;
   /** Berapa menit sebelum jadwal mulai. */
   leadMinutes: number;
+  /** Push dari server aktif di perangkat ini (tetap jalan walaupun app tertutup). */
+  push: boolean;
 }
 
 export const LEAD_OPTIONS = [0, 5, 10, 15, 30];
@@ -17,7 +19,7 @@ const CHECK_INTERVAL_MS = 20_000;
 /** Pengingat yang telat lebih dari ini (mis. app baru dibuka) tidak dikirim lagi. */
 const MAX_LATE_MS = 2 * 60_000;
 
-const DEFAULT_SETTINGS: ReminderSettings = { enabled: false, leadMinutes: 5 };
+const DEFAULT_SETTINGS: ReminderSettings = { enabled: false, leadMinutes: 5, push: false };
 
 const listeners = new Set<() => void>();
 let cached: ReminderSettings | null = null;
@@ -130,7 +132,8 @@ function checkReminders() {
     changed = true;
     const when = settings.leadMinutes === 0 ? 'sekarang' : `${settings.leadMinutes} menit lagi`;
     const body = `${s.title} — mulai ${when} (jam ${s.time}).`;
-    void showNotification('⏰ Pengingat Schedulin', body, `schedulin-${s.id}`);
+    // Kalau push server aktif, notifikasi OS dikirim server — di sini cukup toast supaya tidak dobel
+    if (!settings.push) void showNotification('⏰ Pengingat Schedulin', body, `schedulin-${s.id}`);
     toast.info(`⏰ ${body}`, { duration: 8000 });
   }
 

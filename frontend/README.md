@@ -37,6 +37,30 @@ bun run dev
   - menambah kolom `end_time`, `note`, `date` di `schedules`,
   - membuat tabel `categories` & `presets` supaya tersinkron di cloud.
 
+## Push notification (pengingat walaupun app tertutup)
+
+Hanya untuk user yang login (akun cloud). Alurnya: browser mendaftarkan push subscription ke tabel
+`push_subscriptions` → `pg_cron` memanggil Edge Function `send-reminders` tiap menit → fungsi mengirim
+Web Push ke jadwal yang akan dimulai → service worker (`src/sw.ts`) menampilkan notifikasi.
+
+Setup sekali:
+
+1. **SQL** — jalankan `backend/migrations/003_push.sql` di SQL Editor.
+2. **Extension** — Dashboard → Database → Extensions → aktifkan `pg_cron` dan `pg_net`.
+3. **Edge Function** — Dashboard → Edge Functions → *Deploy a new function* → *Via Editor*, beri nama
+   `send-reminders`, tempel isi `supabase/functions/send-reminders/index.ts`, deploy. Lalu di pengaturan
+   fungsi, **matikan "Verify JWT"** (fungsi ini diamankan dengan header `x-cron-secret`).
+   Alternatif CLI: `npx supabase functions deploy send-reminders --no-verify-jwt --project-ref <ref>`.
+4. **Secrets** — Edge Functions → Secrets → tambahkan `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `CRON_SECRET`
+   (nilainya ada di `backend/.vapid-keys.local`, file lokal yang tidak di-commit).
+5. **Cron** — jalankan `backend/push-cron.sql.local` (versi template yang sudah terisi) di SQL Editor.
+   Kalau file itu tidak ada, pakai `backend/push-cron.template.sql` dan isi placeholder-nya.
+
+Kunci publik VAPID juga tertanam di `src/lib/push.ts`. Kalau kuncinya diganti, perbarui di dua tempat itu.
+
+Catatan perangkat: Android/desktop Chrome langsung bisa. iPhone/iPad butuh iOS 16.4+ dan app harus
+dipasang lewat **Share → Add to Home Screen**, lalu pengingat diaktifkan dari app yang terpasang.
+
 ## Skrip
 
 - `bun run dev` — server pengembangan
