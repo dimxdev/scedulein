@@ -382,7 +382,9 @@ function ensureCloudSeed(sb: SupabaseClient, userId: string): Promise<void> {
         );
       }
 
-      unwrap(await sb.auth.updateUser({ data: { schedulin_seeded: true } }));
+      // Respons Auth berbeda bentuk dengan respons query, jadi tidak lewat unwrap()
+      const { error: metaError } = await sb.auth.updateUser({ data: { schedulin_seeded: true } });
+      if (metaError) throw metaError;
     })();
     seedPromises.set(userId, promise);
     promise.catch(() => seedPromises.delete(userId));

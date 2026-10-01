@@ -43,8 +43,8 @@ export default defineConfig({
       },
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        // og-image hanya untuk preview link di sosmed, tidak perlu disimpan offline
-        globIgnores: ['**/og-image.jpg'],
+        // og-image hanya untuk preview link sosmed; QRIS dimuat saat dibuka saja
+        globIgnores: ['**/og-image.jpg', '**/qris-support.png'],
       },
     }),
   ],

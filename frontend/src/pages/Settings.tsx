@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Bell, BellOff, CloudUpload, Database, Download, FileUp, Info, LogOut, Save, Smartphone, User } from 'lucide-react';
+import { Bell, BellOff, CloudUpload, Coffee, Database, Download, FileUp, Info, LogOut, Save, Smartphone, User } from 'lucide-react';
 import type { AppData } from '../lib/dataService';
 import { downloadExport, parseImport } from '../lib/transfer';
 import { localScheduleCount, dismissMigrationOffer } from '../lib/guestMigration';
@@ -365,6 +365,65 @@ function DataSection() {
   );
 }
 
+function SupportSection() {
+  const [zoomed, setZoomed] = useState(false);
+
+  return (
+    <section
+      aria-labelledby="support-title"
+      className="relative overflow-hidden bg-gradient-to-br from-amber-50 via-white to-sky-50 dark:from-amber-950/30 dark:via-slate-900/90 dark:to-sky-950/30 border border-amber-200/70 dark:border-amber-900/40 rounded-3xl p-5 sm:p-6 shadow-glass dark:shadow-glass-dark"
+    >
+      <div className="flex flex-col sm:flex-row gap-5 sm:items-center">
+        <div className="flex-1 space-y-2">
+          <h2 id="support-title" className={headingClass}>
+            <Coffee className="w-4 h-4 text-amber-600" /> Traktir developernya kopi ☕
+          </h2>
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            Schedulin gratis dan tanpa iklan. Kalau app ini membantu harimu lebih teratur, kamu bisa dukung developernya
+            lewat QRIS. Berapa pun nominalnya sangat berarti dan bikin si kucing makin semangat ngoding! 🐱🧡
+          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Bisa dibayar pakai e-wallet atau m-banking apa saja (GoPay, OVO, DANA, ShopeePay, BCA, dll). Buka di HP?
+            Ketuk QR-nya untuk memperbesar & menyimpan, lalu pilih <em>upload QR dari galeri</em> di aplikasi pembayaranmu.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setZoomed(true)}
+          className="self-center flex-shrink-0 rounded-2xl overflow-hidden bg-white border border-slate-200 dark:border-slate-700 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
+          aria-label="Perbesar QRIS untuk dukungan developer"
+        >
+          <img src="/qris-support.png" alt="QRIS Jasa Software Developer" width={358} height={500} loading="lazy" className="w-40 h-auto" />
+          <span className="block py-1.5 text-[11px] font-bold text-slate-500 bg-slate-50">Ketuk untuk memperbesar</span>
+        </button>
+      </div>
+
+      {zoomed && (
+        <Modal onClose={() => setZoomed(false)} title="Dukung Schedulin 🧡" icon={<Coffee className="w-4 h-4" />} maxWidth="max-w-sm">
+          <div className="space-y-4 text-center">
+            <img
+              src="/qris-support.png"
+              alt="QRIS Jasa Software Developer"
+              width={358}
+              height={500}
+              className="w-full h-auto rounded-2xl border border-slate-200 dark:border-slate-700 bg-white"
+            />
+            <p className="text-xs text-slate-500 dark:text-slate-400">Scan pakai aplikasi pembayaran apa saja. Terima kasih banyak! 🙏</p>
+            <a
+              href="/qris-support.png"
+              download="QRIS-Dukung-Schedulin.png"
+              className="w-full inline-flex items-center justify-center gap-1.5 py-3 rounded-2xl text-sm font-bold bg-amber-400 hover:bg-amber-500 text-amber-950"
+            >
+              <Download className="w-4 h-4" /> Simpan gambar QRIS
+            </a>
+          </div>
+        </Modal>
+      )}
+    </section>
+  );
+}
+
 export default function Settings() {
   const signOut = useAuthStore((s) => s.signOut);
 
@@ -378,6 +437,7 @@ export default function Settings() {
       <ProfileSection />
       <ReminderSection />
       <DataSection />
+      <SupportSection />
 
       <button
         type="button"
