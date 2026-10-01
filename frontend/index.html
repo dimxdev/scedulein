@@ -4,8 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="Schedulin — Aplikasi pengatur jadwal dan rutinitas harian ceria bersama si kucing lucu. Atur kegiatan Senin-Minggu dengan tampilan kawaii dan produktif." />
-    <meta name="theme-color" content="#E0F2FE" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#090D1A" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#E0F2FE" />
+    <!-- Pasang tema sebelum render pertama supaya tidak ada kedipan terang di mode malam -->
+    <script>
+      try {
+        var t = localStorage.getItem('theme');
+        if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#090D1A');
+        }
+      } catch (e) {}
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Schedulin" />
@@ -33,7 +42,10 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Quicksand:wght@600;700&display=swap" rel="stylesheet">
+    <!-- Font dimuat tanpa memblokir render pertama -->
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Quicksand:wght@600;700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Quicksand:wght@600;700&display=swap" media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Quicksand:wght@600;700&display=swap" /></noscript>
     <title>Schedulin</title>
   </head>
   <body>

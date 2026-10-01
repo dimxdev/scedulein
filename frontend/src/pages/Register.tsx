@@ -1,150 +1,118 @@
 import { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Mail, MailCheck, UserPlus } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
-import { isSupabaseConfigured } from '../lib/dataService';
-import { Link, useNavigate } from 'react-router-dom';
-import SkyBackground from '../components/SkyBackground';
-import MascotCat from '../components/MascotCat';
-import { useThemeStore } from '../store/themeStore';
-import { Mail, Lock, UserPlus } from 'lucide-react';
-import ThemeToggle from '../components/ThemeToggle';
+import { isSupabaseConfigured } from '../lib/supabase';
+import AuthShell, { authInputClass, authLabelClass, authPrimaryButtonClass } from '../components/AuthShell';
+import PasswordInput from '../components/PasswordInput';
 
 export default function Register() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [msg, setMsg] = useState('');
+  const [sentTo, setSentTo] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const { isDarkMode } = useThemeStore();
-  const { signInGuest, setUser } = useAuthStore();
+  const signUp = useAuthStore((s) => s.signUp);
   const navigate = useNavigate();
-  const isCloud = isSupabaseConfigured();
+
+  // Tanpa Supabase tidak ada akun — langsung ke halaman mulai
+  if (!isSupabaseConfigured()) return <Navigate to="/login" replace />;
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setMsg('');
     setLoading(true);
-
-    if (isCloud) {
-      const { data, error: regError } = await supabase.auth.signUp({ email, password });
-      if (regError) {
-        setError(regError.message);
-        setLoading(false);
-        return;
-      }
-      if (data?.session && data?.user) {
-        setUser({
-          id: data.user.id,
-          email: data.user.email || email,
-          isGuest: false,
-        });
-        setLoading(false);
+    try {
+      const result = await signUp(email.trim(), password);
+      if (result === 'signed-in') {
         navigate('/', { replace: true });
         return;
       }
-      setMsg('Registrasi akun berhasil! Silakan langsung login.');
-      setTimeout(() => navigate('/login'), 2000);
-    } else {
-      // Local mode
-      signInGuest(email.split('@')[0] || 'Kawan Schedulin');
-      navigate('/', { replace: true });
+      setSentTo(email.trim());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     }
-
     setLoading(false);
   };
 
+  if (sentTo) {
+    return (
+      <AuthShell title="Cek Email Kamu" subtitle="Satu langkah lagi! ✉️">
+        <div className="text-center space-y-4" role="status">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center">
+            <MailCheck className="w-7 h-7" />
+          </div>
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            Kami sudah mengirim link konfirmasi ke <strong className="text-slate-800 dark:text-white">{sentTo}</strong>.
+            Klik link tersebut, lalu masuk dengan email & password yang tadi.
+          </p>
+          <p className="text-xs text-slate-400">Tidak ada di inbox? Cek folder spam/promosi.</p>
+          <Link to="/login" className={authPrimaryButtonClass}>
+            Ke halaman masuk
+          </Link>
+        </div>
+      </AuthShell>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative font-sans text-slate-800 dark:text-slate-100">
-      <SkyBackground />
+    <AuthShell title="Daftar Schedulin" subtitle="Buat akun supaya jadwalmu tersinkron di semua perangkat ✨">
+      {error && (
+        <div
+          role="alert"
+          className="mb-4 p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-rose-600 dark:text-rose-300 text-xs font-semibold"
+        >
+          {error}
+        </div>
+      )}
 
-      <div className="absolute top-6 right-6 z-20">
-        <ThemeToggle />
-      </div>
-
-      <div className="w-full max-w-md">
-        <div className="text-center mb-4">
-          <MascotCat isNight={isDarkMode} size="md" />
-          <h1 className="text-3xl font-display font-extrabold tracking-tight mt-2 bg-gradient-to-r from-sky-600 via-amber-500 to-orange-500 dark:from-sky-300 dark:via-purple-300 dark:to-amber-200 bg-clip-text text-transparent">
-            Daftar Schedulin
-          </h1>
-          <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 mt-1">
-            Buat akun baru untuk mulai menyusun rutinitas harianmu ✨
-          </p>
+      <form onSubmit={handleRegister} className="space-y-4">
+        <div>
+          <label htmlFor="register-email" className={authLabelClass}>
+            Email
+          </label>
+          <div className="relative">
+            <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 pointer-events-none" />
+            <input
+              id="register-email"
+              type="email"
+              autoComplete="email"
+              placeholder="nama@email.com"
+              className={authInputClass}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
         </div>
 
-        <div className="backdrop-blur-xl bg-white/75 dark:bg-slate-900/80 border border-white/60 dark:border-white/10 rounded-3xl p-7 shadow-glass dark:shadow-glass-dark transition-all">
-          {error && (
-            <div role="alert" className="mb-4 p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-rose-600 dark:text-rose-300 text-xs font-semibold">
-              {error}
-            </div>
-          )}
-
-          {msg && (
-            <div role="alert" aria-live="polite" className="mb-4 p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-emerald-600 dark:text-emerald-300 text-xs font-semibold">
-              {msg}
-            </div>
-          )}
-
-          <form onSubmit={handleRegister} className="space-y-4">
-            <div>
-              <label htmlFor="register-email" className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                Email
-              </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                <input
-                  id="register-email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="nama@email.com"
-                  className="w-full pl-10 pr-4 py-3 rounded-2xl bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm font-medium transition-all"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="register-password" className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                <input
-                  id="register-password"
-                  type="password"
-                  autoComplete="new-password"
-                  placeholder="Minimal 6 karakter"
-                  className="w-full pl-10 pr-4 py-3 rounded-2xl bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm font-medium transition-all"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3.5 px-4 rounded-2xl font-bold text-sm bg-gradient-to-r from-sky-500 to-amber-400 hover:from-sky-400 hover:to-amber-500 text-white shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all flex items-center justify-center gap-2"
-            >
-              <UserPlus className="w-4 h-4" />
-              <span>{loading ? 'Mendaftarkan...' : 'Buat Akun'}</span>
-            </button>
-          </form>
-
-          <p className="text-center text-xs text-slate-500 dark:text-slate-400 mt-5">
-            Sudah punya akun?{' '}
-            <Link to="/login" className="font-bold text-sky-600 dark:text-sky-400 hover:underline">
-              Masuk di sini
-            </Link>
-          </p>
+        <div>
+          <label htmlFor="register-password" className={authLabelClass}>
+            Password
+          </label>
+          <PasswordInput
+            id="register-password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="new-password"
+            placeholder="Minimal 6 karakter"
+            minLength={6}
+          />
         </div>
-      </div>
-    </div>
+
+        <button type="submit" disabled={loading} className={authPrimaryButtonClass}>
+          <UserPlus className="w-4 h-4" />
+          {loading ? 'Mendaftarkan...' : 'Buat Akun'}
+        </button>
+      </form>
+
+      <p className="text-center text-xs text-slate-500 dark:text-slate-400 mt-5">
+        Sudah punya akun?{' '}
+        <Link to="/login" className="font-bold text-sky-600 dark:text-sky-400 hover:underline">
+          Masuk di sini
+        </Link>
+      </p>
+    </AuthShell>
   );
 }

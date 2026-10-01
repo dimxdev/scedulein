@@ -1,10 +1,17 @@
-import { supabase } from './supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { getSupabase } from './supabase';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export type CategoryColor = 'emerald' | 'blue' | 'amber' | 'purple' | 'rose' | 'pink' | 'cyan' | 'indigo';
 
 export interface CategoryItem {
   id: string;
   label: string;
   icon: string;
-  color: 'emerald' | 'blue' | 'amber' | 'purple' | 'rose' | 'pink' | 'cyan' | 'indigo';
+  color: CategoryColor;
 }
 
 export interface PresetItem {
@@ -17,18 +24,54 @@ export interface PresetItem {
 export interface ScheduleItem {
   id: string;
   day_of_week: number; // 1 = Senin, 7 = Minggu
-  time: string;
+  time: string; // "HH:MM"
+  end_time?: string | null; // "HH:MM", opsional
   title: string;
-  category?: string;
-  user_id?: string;
+  category: string;
+  note?: string | null;
+  /** Diisi = tugas sekali jalan di tanggal itu (YYYY-MM-DD). Kosong = rutin mingguan. */
+  date?: string | null;
+  created_at?: string;
 }
 
-export interface DailyLogItem {
-  id: string;
+export interface LogItem {
   schedule_id: string;
   date: string; // YYYY-MM-DD
-  status: boolean;
 }
+
+export interface AppData {
+  schedules: ScheduleItem[];
+  categories: CategoryItem[];
+  presets: PresetItem[];
+  logs: LogItem[];
+}
+
+export interface DeletedSchedule {
+  schedule: ScheduleItem;
+  logs: LogItem[];
+}
+
+export interface Backend {
+  readonly kind: 'local' | 'cloud';
+  /** Semua data, log dibatasi mulai `sinceDate`. */
+  loadAll(sinceDate: string): Promise<AppData>;
+  /** Semua data termasuk seluruh riwayat log (untuk export / migrasi). */
+  exportAll(): Promise<AppData>;
+  insertSchedules(items: ScheduleItem[]): Promise<void>;
+  updateSchedule(id: string, patch: Partial<Omit<ScheduleItem, 'id'>>): Promise<void>;
+  deleteSchedule(id: string): Promise<DeletedSchedule | null>;
+  setLog(scheduleId: string, date: string, done: boolean): Promise<void>;
+  insertLogs(logs: LogItem[]): Promise<void>;
+  insertCategories(items: CategoryItem[]): Promise<void>;
+  deleteCategory(id: string): Promise<void>;
+  insertPresets(items: PresetItem[]): Promise<void>;
+  deletePreset(id: string): Promise<void>;
+  clearAll(): Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
+// Defaults
+// ---------------------------------------------------------------------------
 
 export const DEFAULT_CATEGORIES: CategoryItem[] = [
   { id: 'work', label: 'Kerja/Tugas', icon: '💼', color: 'blue' },
@@ -46,7 +89,7 @@ export const DEFAULT_PRESETS: PresetItem[] = [
   { id: 'pre-5', title: 'Baca Buku / Me-Time Malam 📖', time: '21:30', category: 'learn' },
 ];
 
-export const COLOR_PALETTES: Record<CategoryItem['color'], { bg: string; dot: string }> = {
+export const COLOR_PALETTES: Record<CategoryColor, { bg: string; dot: string }> = {
   blue: { bg: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300', dot: 'bg-blue-500' },
   emerald: { bg: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300', dot: 'bg-emerald-500' },
   amber: { bg: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300', dot: 'bg-amber-500' },
@@ -57,270 +100,432 @@ export const COLOR_PALETTES: Record<CategoryItem['color'], { bg: string; dot: st
   indigo: { bg: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300', dot: 'bg-indigo-500' },
 };
 
-// Initial realistic default routine seed
+const seed = (id: string, day: number, time: string, title: string, category: string): ScheduleItem => ({
+  id,
+  day_of_week: day,
+  time,
+  title,
+  category,
+});
+
+// Contoh rutinitas awal untuk mode tamu
 const DEFAULT_SEED_SCHEDULES: ScheduleItem[] = [
-  // Senin (1)
-  { id: 'seed-1', day_of_week: 1, time: '06:30', title: 'Sarapan bergizi & segelas air putih 🍳', category: 'health' },
-  { id: 'seed-2', day_of_week: 1, time: '08:30', title: 'Review to-do list & mulai kerja / kuliah 💻', category: 'work' },
-  { id: 'seed-3', day_of_week: 1, time: '12:00', title: 'Makan siang & istirahat sejenak 🍱', category: 'chill' },
-  { id: 'seed-4', day_of_week: 1, time: '17:00', title: 'Beri makan kucing kesayangan & jalan sore 🐈', category: 'routine' },
-  { id: 'seed-5', day_of_week: 1, time: '21:30', title: 'Skincare malam & baca buku 20 menit 📖', category: 'learn' },
-
-  // Selasa (2)
-  { id: 'seed-6', day_of_week: 2, time: '07:00', title: 'Stretching & olahraga ringan 15 menit 🧘', category: 'health' },
-  { id: 'seed-7', day_of_week: 2, time: '09:00', title: 'Fokus pengerjaan project & coding 🚀', category: 'work' },
-  { id: 'seed-8', day_of_week: 2, time: '16:00', title: 'Kopi santai sore & cemilan ☕', category: 'chill' },
-  { id: 'seed-9', day_of_week: 2, time: '22:00', title: 'Tidur cukup sebelum larut malam 🌙', category: 'health' },
-
-  // Rabu (3)
-  { id: 'seed-10', day_of_week: 3, time: '08:00', title: 'Cek email & meeting pagi ☕', category: 'work' },
-  { id: 'seed-11', day_of_week: 3, time: '15:30', title: 'Belajar teknologi baru / baca tutorial 📚', category: 'learn' },
-  { id: 'seed-12', day_of_week: 3, time: '19:00', title: 'Nonton film / main game santai 🎮', category: 'chill' },
-
-  // Kamis (4)
-  { id: 'seed-13', day_of_week: 4, time: '07:30', title: 'Sarapan buah & jus segar 🍓', category: 'health' },
-  { id: 'seed-14', day_of_week: 4, time: '10:00', title: 'Selesaikan tugas prioritas minggu ini 🎯', category: 'work' },
-  { id: 'seed-15', day_of_week: 4, time: '17:30', title: 'Bersih-bersih kamar & meja kerja ✨', category: 'routine' },
-
-  // Jumat (5)
-  { id: 'seed-16', day_of_week: 5, time: '09:00', title: 'Review progress mingguan 📈', category: 'work' },
-  { id: 'seed-17', day_of_week: 5, time: '17:00', title: 'Jumat santai - weekend is coming! 🎉', category: 'chill' },
-  { id: 'seed-18', day_of_week: 5, time: '20:00', title: 'Hangout / Me-time malam 🍿', category: 'chill' },
-
-  // Sabtu (6)
-  { id: 'seed-19', day_of_week: 6, time: '08:30', title: 'Bangun santai & jalan pagi santai 🌿', category: 'health' },
-  { id: 'seed-20', day_of_week: 6, time: '14:00', title: 'Eksplor hobi baru & dengerin musik 🎨', category: 'learn' },
-  { id: 'seed-21', day_of_week: 6, time: '18:30', title: 'Makan malam enak bareng teman/keluarga 🍕', category: 'chill' },
-
-  // Minggu (7)
-  { id: 'seed-22', day_of_week: 7, time: '09:00', title: 'Cuci pakaian & self care day 🛁', category: 'routine' },
-  { id: 'seed-23', day_of_week: 7, time: '15:00', title: 'Jadwalkan rencana minggu depan di Schedulin 📝', category: 'routine' },
-  { id: 'seed-24', day_of_week: 7, time: '21:00', title: 'Tidur lelap menyiapkan energi hari Senin 💤', category: 'health' },
+  seed('seed-1', 1, '06:30', 'Sarapan bergizi & segelas air putih 🍳', 'health'),
+  seed('seed-2', 1, '08:30', 'Review to-do list & mulai kerja / kuliah 💻', 'work'),
+  seed('seed-3', 1, '12:00', 'Makan siang & istirahat sejenak 🍱', 'chill'),
+  seed('seed-4', 1, '17:00', 'Beri makan kucing kesayangan & jalan sore 🐈', 'routine'),
+  seed('seed-5', 1, '21:30', 'Skincare malam & baca buku 20 menit 📖', 'learn'),
+  seed('seed-6', 2, '07:00', 'Stretching & olahraga ringan 15 menit 🧘', 'health'),
+  seed('seed-7', 2, '09:00', 'Fokus pengerjaan project & coding 🚀', 'work'),
+  seed('seed-8', 2, '16:00', 'Kopi santai sore & cemilan ☕', 'chill'),
+  seed('seed-9', 2, '22:00', 'Tidur cukup sebelum larut malam 🌙', 'health'),
+  seed('seed-10', 3, '08:00', 'Cek email & meeting pagi ☕', 'work'),
+  seed('seed-11', 3, '15:30', 'Belajar teknologi baru / baca tutorial 📚', 'learn'),
+  seed('seed-12', 3, '19:00', 'Nonton film / main game santai 🎮', 'chill'),
+  seed('seed-13', 4, '07:30', 'Sarapan buah & jus segar 🍓', 'health'),
+  seed('seed-14', 4, '10:00', 'Selesaikan tugas prioritas minggu ini 🎯', 'work'),
+  seed('seed-15', 4, '17:30', 'Bersih-bersih kamar & meja kerja ✨', 'routine'),
+  seed('seed-16', 5, '09:00', 'Review progress mingguan 📈', 'work'),
+  seed('seed-17', 5, '17:00', 'Jumat santai - weekend is coming! 🎉', 'chill'),
+  seed('seed-18', 5, '20:00', 'Hangout / Me-time malam 🍿', 'chill'),
+  seed('seed-19', 6, '08:30', 'Bangun santai & jalan pagi santai 🌿', 'health'),
+  seed('seed-20', 6, '14:00', 'Eksplor hobi baru & dengerin musik 🎨', 'learn'),
+  seed('seed-21', 6, '18:30', 'Makan malam enak bareng teman/keluarga 🍕', 'chill'),
+  seed('seed-22', 7, '09:00', 'Cuci pakaian & self care day 🛁', 'routine'),
+  seed('seed-23', 7, '15:00', 'Jadwalkan rencana minggu depan di Schedulin 📝', 'routine'),
+  seed('seed-24', 7, '21:00', 'Tidur lelap menyiapkan energi hari Senin 💤', 'health'),
 ];
 
-const LOCAL_STORAGE_KEY_SCHEDULES = 'schedulin_schedules_v1';
-const LOCAL_STORAGE_KEY_LOGS = 'schedulin_daily_logs_v1';
-const LOCAL_STORAGE_KEY_CATEGORIES = 'schedulin_categories_v1';
-const LOCAL_STORAGE_KEY_PRESETS = 'schedulin_presets_v1';
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-export const isSupabaseConfigured = (): boolean => {
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  return Boolean(url && key && !url.includes('your-project-id') && !url.includes('placeholder'));
-};
-
-// Local storage helpers
-const getLocalSchedules = (): ScheduleItem[] => {
-  try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY_SCHEDULES);
-    if (!raw) {
-      localStorage.setItem(LOCAL_STORAGE_KEY_SCHEDULES, JSON.stringify(DEFAULT_SEED_SCHEDULES));
-      return DEFAULT_SEED_SCHEDULES;
-    }
-    return JSON.parse(raw);
-  } catch {
-    return DEFAULT_SEED_SCHEDULES;
+export function newId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
   }
+  // Fallback untuk konteks non-HTTPS (mis. buka dev server lewat IP LAN)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+const hhmm = (value: string | null | undefined): string | null => (value ? value.slice(0, 5) : null);
+
+function normalizeSchedule(raw: ScheduleItem): ScheduleItem {
+  return {
+    ...raw,
+    time: hhmm(raw.time) ?? '00:00',
+    end_time: hhmm(raw.end_time),
+    note: raw.note || null,
+    date: raw.date || null,
+    category: raw.category || 'routine',
+  };
+}
+
+export const sortSchedules = (items: ScheduleItem[]) =>
+  [...items].sort((a, b) => a.time.localeCompare(b.time) || a.title.localeCompare(b.title));
+
+// ---------------------------------------------------------------------------
+// Local backend (localStorage) — dipakai mode tamu
+// ---------------------------------------------------------------------------
+
+const KEYS = {
+  schedules: 'schedulin_schedules_v1',
+  logs: 'schedulin_daily_logs_v1',
+  categories: 'schedulin_categories_v1',
+  presets: 'schedulin_presets_v1',
 };
 
-const saveLocalSchedules = (items: ScheduleItem[]) => {
-  localStorage.setItem(LOCAL_STORAGE_KEY_SCHEDULES, JSON.stringify(items));
-};
+interface StoredLog extends LogItem {
+  id?: string;
+  status?: boolean;
+}
 
-const getLocalLogs = (): DailyLogItem[] => {
+function readJson<T>(key: string): T | null {
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY_LOGS);
-    return raw ? JSON.parse(raw) : [];
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
   } catch {
-    return [];
+    return null;
   }
+}
+
+function writeJson(key: string, value: unknown) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function readOrSeed<T>(key: string, fallback: T | (() => T)): T {
+  const existing = readJson<T>(key);
+  if (existing) return existing;
+  const value = typeof fallback === 'function' ? (fallback as () => T)() : fallback;
+  writeJson(key, value);
+  return value;
+}
+
+// Contoh jadwal diberi created_at = saat dibuat, supaya statistik tidak
+// menghitung hari-hari sebelum user mulai sebagai "gagal".
+const seedSchedules = () => {
+  const now = new Date().toISOString();
+  return DEFAULT_SEED_SCHEDULES.map((s) => ({ ...s, created_at: now }));
 };
 
-const saveLocalLogs = (logs: DailyLogItem[]) => {
-  localStorage.setItem(LOCAL_STORAGE_KEY_LOGS, JSON.stringify(logs));
+const localSchedules = () => readOrSeed<ScheduleItem[]>(KEYS.schedules, seedSchedules).map(normalizeSchedule);
+const localLogs = () =>
+  (readJson<StoredLog[]>(KEYS.logs) ?? [])
+    .filter((l) => l.status !== false)
+    .map((l) => ({ schedule_id: l.schedule_id, date: l.date }));
+const localCategories = () => readOrSeed<CategoryItem[]>(KEYS.categories, DEFAULT_CATEGORIES);
+const localPresets = () => readOrSeed<PresetItem[]>(KEYS.presets, DEFAULT_PRESETS);
+
+const logKey = (l: LogItem) => `${l.date}|${l.schedule_id}`;
+
+export const localBackend: Backend = {
+  kind: 'local',
+
+  async loadAll(sinceDate) {
+    return {
+      schedules: sortSchedules(localSchedules()),
+      categories: localCategories(),
+      presets: localPresets(),
+      logs: localLogs().filter((l) => l.date >= sinceDate),
+    };
+  },
+
+  async exportAll() {
+    return {
+      schedules: sortSchedules(localSchedules()),
+      categories: localCategories(),
+      presets: localPresets(),
+      logs: localLogs(),
+    };
+  },
+
+  async insertSchedules(items) {
+    const now = new Date().toISOString();
+    writeJson(KEYS.schedules, [
+      ...localSchedules(),
+      ...items.map((s) => normalizeSchedule({ created_at: now, ...s })),
+    ]);
+  },
+
+  async updateSchedule(id, patch) {
+    writeJson(
+      KEYS.schedules,
+      localSchedules().map((s) => (s.id === id ? normalizeSchedule({ ...s, ...patch }) : s))
+    );
+  },
+
+  async deleteSchedule(id) {
+    const schedule = localSchedules().find((s) => s.id === id);
+    if (!schedule) return null;
+    const logs = localLogs().filter((l) => l.schedule_id === id);
+    writeJson(KEYS.schedules, localSchedules().filter((s) => s.id !== id));
+    writeJson(KEYS.logs, localLogs().filter((l) => l.schedule_id !== id));
+    return { schedule, logs };
+  },
+
+  async setLog(scheduleId, date, done) {
+    const rest = localLogs().filter((l) => !(l.schedule_id === scheduleId && l.date === date));
+    writeJson(KEYS.logs, done ? [...rest, { schedule_id: scheduleId, date }] : rest);
+  },
+
+  async insertLogs(logs) {
+    const existing = localLogs();
+    const seen = new Set(existing.map(logKey));
+    writeJson(KEYS.logs, [...existing, ...logs.filter((l) => !seen.has(logKey(l)))]);
+  },
+
+  async insertCategories(items) {
+    writeJson(KEYS.categories, [...localCategories(), ...items]);
+  },
+
+  async deleteCategory(id) {
+    writeJson(KEYS.categories, localCategories().filter((c) => c.id !== id));
+  },
+
+  async insertPresets(items) {
+    writeJson(KEYS.presets, [...localPresets(), ...items]);
+  },
+
+  async deletePreset(id) {
+    writeJson(KEYS.presets, localPresets().filter((p) => p.id !== id));
+  },
+
+  async clearAll() {
+    writeJson(KEYS.schedules, []);
+    writeJson(KEYS.logs, []);
+    writeJson(KEYS.categories, []);
+    writeJson(KEYS.presets, []);
+  },
 };
 
-export const dataService = {
-  // --- CATEGORIES ---
-  getCategories(): CategoryItem[] {
-    try {
-      const raw = localStorage.getItem(LOCAL_STORAGE_KEY_CATEGORIES);
-      if (!raw) {
-        localStorage.setItem(LOCAL_STORAGE_KEY_CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES));
-        return DEFAULT_CATEGORIES;
-      }
-      return JSON.parse(raw);
-    } catch {
-      return DEFAULT_CATEGORIES;
-    }
-  },
+/** Apakah browser ini punya data mode tamu yang pernah dipakai. */
+export function hasLocalData(): boolean {
+  return readJson<ScheduleItem[]>(KEYS.schedules) !== null;
+}
 
-  addCategory(item: Omit<CategoryItem, 'id'>): CategoryItem {
-    const categories = this.getCategories();
-    const newCat: CategoryItem = {
-      ...item,
-      id: 'cat-' + Date.now(),
+/** Hapus semua data mode tamu (dipakai setelah dipindahkan ke akun cloud). */
+export function clearLocalData() {
+  Object.values(KEYS).forEach((key) => localStorage.removeItem(key));
+}
+
+// ---------------------------------------------------------------------------
+// Cloud backend (Supabase) — dipakai user yang login dengan akun
+// ---------------------------------------------------------------------------
+
+const SCHEDULE_COLUMNS = 'id, day_of_week, time, end_time, title, category, note, date, created_at';
+const PAGE_SIZE = 1000;
+const CHUNK_SIZE = 500;
+
+interface QueryResult<T> {
+  data: T | null;
+  error: { message: string } | null;
+}
+
+function unwrap<T>(result: QueryResult<T>): T {
+  if (result.error) throw result.error;
+  return result.data as T;
+}
+
+/** PostgREST membatasi 1000 baris per request, jadi ambil per halaman. */
+async function selectAll<T>(build: (from: number, to: number) => PromiseLike<QueryResult<T[]>>): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const page = unwrap(await build(from, from + PAGE_SIZE - 1)) ?? [];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) return rows;
+  }
+}
+
+async function inChunks<T>(items: T[], run: (chunk: T[]) => PromiseLike<QueryResult<unknown>>) {
+  for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+    unwrap(await run(items.slice(i, i + CHUNK_SIZE)));
+  }
+}
+
+const seedPromises = new Map<string, Promise<void>>();
+
+/**
+ * Akun baru (atau akun lama dari versi sebelumnya yang menyimpan kategori di
+ * browser) diberi kategori & preset awal sekali saja. Penanda disimpan di
+ * user_metadata supaya preset yang sengaja dihapus user tidak muncul lagi.
+ */
+function ensureCloudSeed(sb: SupabaseClient, userId: string): Promise<void> {
+  let promise = seedPromises.get(userId);
+  if (!promise) {
+    promise = (async () => {
+      const { data } = await sb.auth.getSession();
+      if (data.session?.user.user_metadata?.schedulin_seeded) return;
+
+      // Versi lama menyimpan kategori/preset di localStorage walau login cloud — bawa ikut.
+      const categories = readJson<CategoryItem[]>(KEYS.categories) ?? DEFAULT_CATEGORIES;
+      const presets = readJson<PresetItem[]>(KEYS.presets) ?? DEFAULT_PRESETS;
+
+      const existing = unwrap(await sb.from('categories').select('id').limit(1));
+      if (!existing?.length) {
+        unwrap(
+          await sb.from('categories').upsert(
+            categories.map((c) => ({ id: c.id, label: c.label, icon: c.icon, color: c.color, user_id: userId })),
+            { onConflict: 'user_id,id', ignoreDuplicates: true }
+          )
+        );
+      }
+
+      const existingPresets = unwrap(await sb.from('presets').select('id').limit(1));
+      if (!existingPresets?.length) {
+        unwrap(
+          await sb.from('presets').insert(
+            presets.map((p) => ({ id: newId(), title: p.title, time: p.time, category: p.category, user_id: userId }))
+          )
+        );
+      }
+
+      unwrap(await sb.auth.updateUser({ data: { schedulin_seeded: true } }));
+    })();
+    seedPromises.set(userId, promise);
+    promise.catch(() => seedPromises.delete(userId));
+  }
+  return promise;
+}
+
+export function createCloudBackend(userId: string): Backend {
+  const client = async () => {
+    const sb = await getSupabase();
+    await ensureCloudSeed(sb, userId);
+    return sb;
+  };
+
+  const loadWithLogs = async (sinceDate: string | null): Promise<AppData> => {
+    const sb = await client();
+    const [schedules, categories, presets, logs] = await Promise.all([
+      selectAll<ScheduleItem>((from, to) =>
+        sb.from('schedules').select(SCHEDULE_COLUMNS).order('time').range(from, to)
+      ),
+      selectAll<CategoryItem>((from, to) =>
+        sb.from('categories').select('id, label, icon, color').order('created_at').range(from, to)
+      ),
+      selectAll<PresetItem>((from, to) =>
+        sb.from('presets').select('id, title, time, category').order('created_at').range(from, to)
+      ),
+      selectAll<LogItem>((from, to) => {
+        let q = sb.from('daily_logs').select('schedule_id, date').eq('status', true);
+        if (sinceDate) q = q.gte('date', sinceDate);
+        return q.order('date').range(from, to);
+      }),
+    ]);
+    return {
+      schedules: sortSchedules(schedules.map(normalizeSchedule)),
+      categories,
+      presets: presets.map((p) => ({ ...p, time: hhmm(p.time) ?? '00:00' })),
+      logs,
     };
-    categories.push(newCat);
-    localStorage.setItem(LOCAL_STORAGE_KEY_CATEGORIES, JSON.stringify(categories));
-    return newCat;
-  },
+  };
 
-  deleteCategory(id: string): boolean {
-    const categories = this.getCategories();
-    if (categories.length <= 1) return false; // Prevent deleting all categories
-    const filtered = categories.filter((c) => c.id !== id);
-    localStorage.setItem(LOCAL_STORAGE_KEY_CATEGORIES, JSON.stringify(filtered));
-    return true;
-  },
+  return {
+    kind: 'cloud',
 
-  // --- PRESETS ---
-  getPresets(): PresetItem[] {
-    try {
-      const raw = localStorage.getItem(LOCAL_STORAGE_KEY_PRESETS);
-      if (!raw) {
-        localStorage.setItem(LOCAL_STORAGE_KEY_PRESETS, JSON.stringify(DEFAULT_PRESETS));
-        return DEFAULT_PRESETS;
-      }
-      return JSON.parse(raw);
-    } catch {
-      return DEFAULT_PRESETS;
-    }
-  },
+    loadAll: (sinceDate) => loadWithLogs(sinceDate),
+    exportAll: () => loadWithLogs(null),
 
-  addPreset(item: Omit<PresetItem, 'id'>): PresetItem {
-    const presets = this.getPresets();
-    const newPreset: PresetItem = {
-      ...item,
-      id: 'pre-' + Date.now(),
-    };
-    presets.push(newPreset);
-    localStorage.setItem(LOCAL_STORAGE_KEY_PRESETS, JSON.stringify(presets));
-    return newPreset;
-  },
-
-  deletePreset(id: string): boolean {
-    const presets = this.getPresets();
-    const filtered = presets.filter((p) => p.id !== id);
-    localStorage.setItem(LOCAL_STORAGE_KEY_PRESETS, JSON.stringify(filtered));
-    return true;
-  },
-
-  // --- SCHEDULES ---
-  async getSchedules(dayOfWeek?: number): Promise<ScheduleItem[]> {
-    if (isSupabaseConfigured()) {
-      try {
-        let query = supabase.from('schedules').select('*').order('time', { ascending: true });
-        if (dayOfWeek) {
-          query = query.eq('day_of_week', dayOfWeek);
-        }
-        const { data, error } = await query;
-        if (!error && data) return data;
-      } catch (err) {
-        console.warn('Supabase fetch failed, falling back to local storage:', err);
-      }
-    }
-
-    const all = getLocalSchedules();
-    if (dayOfWeek) {
-      return all
-        .filter((s) => s.day_of_week === dayOfWeek)
-        .sort((a, b) => a.time.localeCompare(b.time));
-    }
-    return all.sort((a, b) => a.time.localeCompare(b.time));
-  },
-
-  async addSchedule(item: Omit<ScheduleItem, 'id'>): Promise<ScheduleItem> {
-    if (isSupabaseConfigured()) {
-      try {
-        const { data, error } = await supabase.from('schedules').insert(item).select().single();
-        if (!error && data) return data;
-      } catch (err) {
-        console.warn('Supabase insert failed, saving locally:', err);
-      }
-    }
-
-    const all = getLocalSchedules();
-    const newItem: ScheduleItem = {
-      ...item,
-      id: 'local-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
-    };
-    all.push(newItem);
-    saveLocalSchedules(all);
-    return newItem;
-  },
-
-  async deleteSchedule(id: string): Promise<boolean> {
-    if (isSupabaseConfigured()) {
-      try {
-        const { error } = await supabase.from('schedules').delete().eq('id', id);
-        if (!error) return true;
-      } catch (err) {
-        console.warn('Supabase delete failed, removing locally:', err);
-      }
-    }
-
-    const all = getLocalSchedules();
-    const filtered = all.filter((s) => s.id !== id);
-    saveLocalSchedules(filtered);
-    return true;
-  },
-
-  // --- DAILY LOGS ---
-  async getCompletedLogs(dateStr: string): Promise<string[]> {
-    if (isSupabaseConfigured()) {
-      try {
-        const { data, error } = await supabase
-          .from('daily_logs')
-          .select('schedule_id')
-          .eq('date', dateStr)
-          .eq('status', true);
-        if (!error && data) {
-          return data.map((d) => d.schedule_id);
-        }
-      } catch (err) {
-        console.warn('Supabase log fetch error, reading local logs:', err);
-      }
-    }
-
-    const logs = getLocalLogs();
-    return logs.filter((l) => l.date === dateStr && l.status).map((l) => l.schedule_id);
-  },
-
-  async toggleLog(scheduleId: string, dateStr: string, currentCompleted: boolean, userId?: string): Promise<boolean> {
-    const nextStatus = !currentCompleted;
-
-    if (isSupabaseConfigured()) {
-      try {
-        if (!nextStatus) {
-          await supabase.from('daily_logs').delete().match({ schedule_id: scheduleId, date: dateStr });
-        } else {
-          await supabase.from('daily_logs').upsert({
-            schedule_id: scheduleId,
-            date: dateStr,
-            status: true,
+    async insertSchedules(items) {
+      const sb = await client();
+      await inChunks(items, (chunk) =>
+        sb.from('schedules').insert(
+          chunk.map((s) => ({
+            id: s.id,
+            day_of_week: s.day_of_week,
+            time: s.time,
+            end_time: s.end_time || null,
+            title: s.title,
+            category: s.category,
+            note: s.note || null,
+            date: s.date || null,
+            ...(s.created_at ? { created_at: s.created_at } : {}),
             user_id: userId,
-          });
-        }
-        return nextStatus;
-      } catch (err) {
-        console.warn('Supabase toggle failed, saving locally:', err);
-      }
-    }
+          }))
+        )
+      );
+    },
 
-    let logs = getLocalLogs();
-    if (!nextStatus) {
-      logs = logs.filter((l) => !(l.schedule_id === scheduleId && l.date === dateStr));
-    } else {
-      logs = logs.filter((l) => !(l.schedule_id === scheduleId && l.date === dateStr));
-      logs.push({
-        id: 'log-' + Date.now(),
-        schedule_id: scheduleId,
-        date: dateStr,
-        status: true,
-      });
-    }
-    saveLocalLogs(logs);
-    return nextStatus;
-  }
-};
+    async updateSchedule(id, patch) {
+      const sb = await client();
+      unwrap(await sb.from('schedules').update(patch).eq('id', id));
+    },
+
+    async deleteSchedule(id) {
+      const sb = await client();
+      const rows = unwrap(await sb.from('schedules').select(SCHEDULE_COLUMNS).eq('id', id)) as ScheduleItem[];
+      if (!rows?.length) return null;
+      const logs = await selectAll<LogItem>((from, to) =>
+        sb.from('daily_logs').select('schedule_id, date').eq('schedule_id', id).eq('status', true).range(from, to)
+      );
+      unwrap(await sb.from('schedules').delete().eq('id', id));
+      return { schedule: normalizeSchedule(rows[0]), logs };
+    },
+
+    async setLog(scheduleId, date, done) {
+      const sb = await client();
+      if (done) {
+        unwrap(
+          await sb
+            .from('daily_logs')
+            .upsert(
+              { schedule_id: scheduleId, date, status: true, user_id: userId },
+              { onConflict: 'schedule_id,date' }
+            )
+        );
+      } else {
+        unwrap(await sb.from('daily_logs').delete().eq('schedule_id', scheduleId).eq('date', date));
+      }
+    },
+
+    async insertLogs(logs) {
+      const sb = await client();
+      await inChunks(logs, (chunk) =>
+        sb.from('daily_logs').upsert(
+          chunk.map((l) => ({ schedule_id: l.schedule_id, date: l.date, status: true, user_id: userId })),
+          { onConflict: 'schedule_id,date', ignoreDuplicates: true }
+        )
+      );
+    },
+
+    async insertCategories(items) {
+      const sb = await client();
+      unwrap(
+        await sb
+          .from('categories')
+          .insert(items.map((c) => ({ id: c.id, label: c.label, icon: c.icon, color: c.color, user_id: userId })))
+      );
+    },
+
+    async deleteCategory(id) {
+      const sb = await client();
+      unwrap(await sb.from('categories').delete().eq('id', id));
+    },
+
+    async insertPresets(items) {
+      const sb = await client();
+      unwrap(
+        await sb
+          .from('presets')
+          .insert(items.map((p) => ({ id: p.id, title: p.title, time: p.time, category: p.category, user_id: userId })))
+      );
+    },
+
+    async deletePreset(id) {
+      const sb = await client();
+      unwrap(await sb.from('presets').delete().eq('id', id));
+    },
+
+    async clearAll() {
+      const sb = await client();
+      // daily_logs ikut terhapus lewat ON DELETE CASCADE
+      unwrap(await sb.from('schedules').delete().eq('user_id', userId));
+      unwrap(await sb.from('daily_logs').delete().eq('user_id', userId));
+      unwrap(await sb.from('presets').delete().eq('user_id', userId));
+      unwrap(await sb.from('categories').delete().eq('user_id', userId));
+    },
+  };
+}

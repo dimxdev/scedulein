@@ -34,6 +34,12 @@ export default {
         'float-slow': 'float 6s ease-in-out infinite',
         'float-reverse': 'floatRev 7s ease-in-out infinite',
         'pulse-subtle': 'pulseSubtle 4s ease-in-out infinite',
+        'toast-in': 'toastIn 0.25s ease-out',
+        'fade-in-up': 'fadeInUp 0.3s ease-out both',
+        'pop-in': 'popIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both',
+        'fade-in': 'fadeIn 0.2s ease-out both',
+        'modal-in': 'fadeInUp 0.22s ease-out both',
+        'modal-out': 'fadeOutDown 0.16s ease-in both',
       },
       keyframes: {
         float: {
@@ -43,6 +49,26 @@ export default {
         floatRev: {
           '0%, 100%': { transform: 'translateY(0px) rotate(0deg)' },
           '50%': { transform: 'translateY(8px) rotate(2deg)' },
+        },
+        fadeInUp: {
+          from: { opacity: '0', transform: 'translateY(12px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        fadeOutDown: {
+          from: { opacity: '1', transform: 'translateY(0)' },
+          to: { opacity: '0', transform: 'translateY(12px)' },
+        },
+        popIn: {
+          from: { opacity: '0', transform: 'scale(0.6)' },
+          to: { opacity: '1', transform: 'scale(1)' },
+        },
+        fadeIn: {
+          from: { opacity: '0' },
+          to: { opacity: '1' },
+        },
+        toastIn: {
+          from: { opacity: '0', transform: 'translateY(12px) scale(0.97)' },
+          to: { opacity: '1', transform: 'translateY(0) scale(1)' },
         },
         pulseSubtle: {
           '0%, 100%': { opacity: '0.4', transform: 'scale(1)' },

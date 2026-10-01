@@ -9,7 +9,7 @@ export default function ThemeToggle() {
       role="switch"
       aria-checked={isDarkMode}
       onClick={toggleTheme}
-      className="relative flex items-center gap-1.5 p-1.5 px-2 rounded-full backdrop-blur-xl bg-white/70 dark:bg-slate-800/80 border border-white/60 dark:border-white/10 shadow-glass dark:shadow-glass-dark hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none transition-all text-xs font-bold"
+      className="relative flex items-center gap-1.5 p-1.5 px-2 rounded-full bg-white/80 dark:bg-slate-800/80 border border-white/60 dark:border-white/10 shadow-glass dark:shadow-glass-dark hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none transition-all text-xs font-bold"
       aria-label={isDarkMode ? 'Beralih ke Mode Siang' : 'Beralih ke Mode Malam'}
       title={isDarkMode ? 'Beralih ke Mode Siang' : 'Beralih ke Mode Malam'}
     >

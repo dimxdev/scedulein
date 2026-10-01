@@ -47,3 +47,80 @@
 .dark * {
   scrollbar-color: rgba(71, 85, 105, 0.4) transparent;
 }
+
+/* -------------------------------------------------------------------------
+   Animasi (CSS murni — menggantikan framer-motion supaya bundle lebih ringan
+   dan animasi berjalan di compositor GPU)
+   ------------------------------------------------------------------------- */
+
+@keyframes mascot-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+@keyframes mascot-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes mascot-sway {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(6deg); }
+}
+@keyframes mascot-breathe {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.05); }
+}
+@keyframes mascot-zzz {
+  0% { opacity: 0; transform: translate(0, 0); }
+  40% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-8px, -20px); }
+}
+@keyframes mascot-hop {
+  0%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-10px); }
+  50% { transform: translateY(0); }
+  65% { transform: translateY(-4px); }
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.2; transform: scale(0.8); }
+  50% { opacity: 0.9; transform: scale(1.3); }
+}
+@keyframes drift {
+  0%, 100% { transform: translateX(-20px); }
+  50% { transform: translateX(30px); }
+}
+
+.anim-bob { animation: mascot-bob 3.5s ease-in-out infinite; }
+.anim-hop { animation: mascot-hop 1.6s ease-in-out infinite; }
+.anim-spin-slow {
+  animation: mascot-spin 30s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.anim-sway {
+  animation: mascot-sway 2.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: left bottom;
+}
+.anim-breathe {
+  animation: mascot-breathe 3s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center bottom;
+}
+.anim-zzz { animation: mascot-zzz 2.8s ease-out infinite; }
+.anim-twinkle {
+  animation: twinkle 3.5s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.anim-drift { animation: drift 25s ease-in-out infinite; }
+
+/* Hormati pengaturan "kurangi gerakan" di OS */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

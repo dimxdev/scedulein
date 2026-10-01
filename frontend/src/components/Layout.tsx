@@ -1,10 +1,15 @@
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { CalendarDays, LogOut, CheckCircle2, Download } from 'lucide-react';
+import { CalendarDays, CheckCircle2, CloudUpload, Download, Settings, TrendingUp, X } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import SkyBackground from './SkyBackground';
+import PageLoader from './PageLoader';
+import { prefetchAppPages } from '../routes';
+import { useReminderScheduler } from '../lib/reminders';
+import { dismissMigrationOffer, localScheduleCount, shouldOfferMigration } from '../lib/guestMigration';
+import { toast } from '../store/toastStore';
 import { useAuthStore } from '../store/authStore';
-import { motion } from 'framer-motion';
+import { useDataStore } from '../store/dataStore';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -13,9 +18,42 @@ interface BeforeInstallPromptEvent extends Event {
 
 export default function Layout() {
   const location = useLocation();
-  const { user, isCloud, signOut } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
+  const loadData = useDataStore((s) => s.load);
+  const resetData = useDataStore((s) => s.reset);
+  const reloadData = useDataStore((s) => s.reload);
+  const dataStatus = useDataStore((s) => s.status);
+  const dataError = useDataStore((s) => s.error);
+  const isCloud = Boolean(user && !user.isGuest);
+  const migrateGuestData = useDataStore((s) => s.migrateGuestData);
+  const [offerMigration, setOfferMigration] = useState(() => isCloud && shouldOfferMigration());
+  const [migrating, setMigrating] = useState(false);
+
+  useReminderScheduler();
+
+  const handleMigrate = async () => {
+    setMigrating(true);
+    const summary = await migrateGuestData();
+    setMigrating(false);
+    if (summary) {
+      dismissMigrationOffer();
+      setOfferMigration(false);
+      toast.success(`${summary.schedules} jadwal dari mode tamu sudah pindah ke akunmu!`);
+    }
+  };
+
+  // Muat data sekali per user; dipakai bersama oleh semua halaman
+  useEffect(() => {
+    if (user) loadData(user);
+    return () => resetData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [canInstall, setCanInstall] = useState(false);
+
+  useEffect(() => {
+    prefetchAppPages();
+  }, []);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -41,6 +79,8 @@ export default function Layout() {
   const navItems = [
     { path: '/', label: 'Hari Ini', icon: CheckCircle2 },
     { path: '/manage', label: 'Atur Jadwal', icon: CalendarDays },
+    { path: '/stats', label: 'Statistik', icon: TrendingUp },
+    { path: '/settings', label: 'Pengaturan', icon: Settings },
   ];
 
   return (
@@ -86,21 +126,16 @@ export default function Layout() {
                   key={item.path}
                   to={item.path}
                   aria-current={isActive ? 'page' : undefined}
-                  className={`relative px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
+                  aria-label={item.label}
+                  title={item.label}
+                  className={`relative px-3 lg:px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors ${
                     isActive
-                      ? 'text-sky-600 dark:text-sky-300 shadow-sm'
+                      ? 'bg-white dark:bg-slate-700/90 text-sky-600 dark:text-sky-300 shadow-sm'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
-                  {isActive && (
-                    <motion.div
-                      layoutId="activeNavTab"
-                      className="absolute inset-0 bg-white dark:bg-slate-700/90 rounded-xl -z-10 shadow-sm"
-                      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                    />
-                  )}
                   <Icon className="w-4 h-4" />
-                  <span>{item.label}</span>
+                  <span className="hidden lg:inline">{item.label}</span>
                 </Link>
               );
             })}
@@ -122,19 +157,19 @@ export default function Layout() {
             <ThemeToggle />
 
             {user && (
-              <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">
-                <span className="hidden sm:inline-block max-w-[120px] truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  {user.isGuest ? 'Tamu' : user.email.split('@')[0]}
+              <Link
+                to="/settings"
+                className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800 group"
+                aria-label={`Profil & pengaturan (${user.name})`}
+                title="Profil & pengaturan"
+              >
+                <span className="hidden sm:inline-block max-w-[110px] truncate text-xs font-semibold text-slate-500 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200">
+                  {user.name}
                 </span>
-                <button
-                  onClick={() => signOut()}
-                  className="p-2 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                  aria-label="Keluar dari akun"
-                  title="Keluar"
-                >
-                  <LogOut className="w-4 h-4" />
-                </button>
-              </div>
+                <span className="w-8 h-8 rounded-full bg-gradient-to-br from-sky-400 to-amber-300 text-white text-sm font-extrabold flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                  {user.name.charAt(0).toUpperCase()}
+                </span>
+              </Link>
             )}
           </div>
         </div>
@@ -163,7 +198,51 @@ export default function Layout() {
       {/* Main Content Area */}
       <main className="flex-1 w-full px-4 sm:px-6 pb-28 md:pb-16 pt-2">
         <div className="max-w-4xl mx-auto">
-          <Outlet />
+          {offerMigration && dataStatus === 'ready' && (
+            <div className="mb-4 p-4 rounded-2xl bg-sky-50/95 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-900/60 text-sky-900 dark:text-sky-100 flex flex-col sm:flex-row sm:items-center gap-3">
+              <CloudUpload className="hidden sm:block w-6 h-6 flex-shrink-0 text-sky-500" />
+              <p className="flex-1 text-sm font-semibold">
+                Ada {localScheduleCount()} jadwal dari mode tamu di perangkat ini. Pindahkan ke akunmu?
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleMigrate}
+                  disabled={migrating}
+                  className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold disabled:opacity-50"
+                >
+                  {migrating ? 'Memindahkan...' : 'Pindahkan'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    dismissMigrationOffer();
+                    setOfferMigration(false);
+                  }}
+                  className="p-1.5 rounded-xl text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/50"
+                  aria-label="Abaikan tawaran pindah data"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+          {dataStatus === 'error' && (
+            <div role="alert" className="mb-4 p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-rose-700 dark:text-rose-300 text-sm font-semibold flex flex-col sm:flex-row sm:items-center gap-3">
+              <span className="flex-1">Gagal memuat data. {dataError}</span>
+              <button
+                type="button"
+                onClick={() => reloadData()}
+                className="self-start px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold"
+              >
+                Coba lagi
+              </button>
+            </div>
+          )}
+          {/* Header tetap tampil saat chunk halaman sedang dimuat */}
+          <Suspense fallback={<PageLoader />}>
+            <Outlet />
+          </Suspense>
         </div>
       </main>
 
